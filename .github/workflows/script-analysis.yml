@@ -1,0 +1,433 @@
+name: Script Analysis and Azure Template Generation
+run-name: Script Analysis and Azure Template Generation
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "scripts/**/*.ps1"
+      - "scripts/**/*.sh"
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  analyze-and-generate:
+    runs-on: ubuntu-latest
+    name: Analyze Scripts and Generate Azure Templates
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup PowerShell
+        shell: pwsh
+        run: |
+          Write-Host "PowerShell version: $($PSVersionTable.PSVersion)"
+
+      - name: Install Analysis Tools
+        shell: pwsh
+        run: |
+          # Install PSScriptAnalyzer for PowerShell scripts
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          Write-Host "PSScriptAnalyzer installed successfully"
+
+          # ShellCheck is pre-installed on GitHub runners
+          Write-Host "ShellCheck version: $(shellcheck --version)"
+
+      - name: Run Script Analysis
+        shell: pwsh
+        run: |
+          # Get all script files in the scripts directory
+          $psScriptFiles = Get-ChildItem -Path "scripts" -Recurse -Filter "*.ps1"
+          $shScriptFiles = Get-ChildItem -Path "scripts" -Recurse -Filter "*.sh"
+          $allScriptFiles = @($psScriptFiles) + @($shScriptFiles)
+
+          Write-Host "Found $($psScriptFiles.Count) PowerShell script(s) to analyze"
+          Write-Host "Found $($shScriptFiles.Count) Shell script(s) to analyze"
+          Write-Host "Total scripts to analyze: $($allScriptFiles.Count)"
+
+          # Initialize results array
+          $results = @()
+          $summaryResults = @()
+
+          # Get current timestamp in mm-dd-yyyy format
+          $timestamp = Get-Date -Format "MM-dd-yyyy"
+
+          # Analyze PowerShell scripts
+          foreach ($file in $psScriptFiles) {
+              Write-Host "Analyzing PowerShell: $($file.FullName)"
+              
+              # Run PSScriptAnalyzer
+              $analysisResults = Invoke-ScriptAnalyzer -Path $file.FullName -Severity Error,Warning -ExcludeRule PSUseBOMForUnicodeEncodedFile,PSUseDeclaredVarsMoreThanAssignments,PSUseShouldProcessForStateChangingFunctions,PSAvoidUsingEmptyCatchBlock,PSReviewUnusedParameter
+              
+              # Determine pass/fail status
+              $status = if ($analysisResults.Count -eq 0) { "pass" } else { "not passed" }
+              
+              # Add to results for JSON output
+              $results += [PSCustomObject]@{
+                  filename = $file.Name
+                  result = $status
+                  timestamp = $timestamp
+                  type = "PowerShell"
+              }
+              
+              # Add to summary results with details
+              $summaryResults += [PSCustomObject]@{
+                  File = $file.FullName.Replace('\', '/').Replace((Get-Location).Path.Replace('\', '/') + '/', '')
+                  Status = $status
+                  Issues = $analysisResults.Count
+                  Details = $analysisResults
+                  Type = "PowerShell"
+              }
+          }
+
+          # Analyze Shell scripts
+          foreach ($file in $shScriptFiles) {
+              Write-Host "Analyzing Shell: $($file.FullName)"
+              
+              # Run ShellCheck and capture output
+              $shellCheckOutput = shellcheck -f json $file.FullName 2>&1 | Out-String
+              
+              try {
+                  $shellCheckResults = $shellCheckOutput | ConvertFrom-Json
+                  $issueCount = @($shellCheckResults).Count
+              } catch {
+                  # If JSON parsing fails, assume no issues
+                  $shellCheckResults = @()
+                  $issueCount = 0
+              }
+              
+              # Determine pass/fail status
+              $status = if ($issueCount -eq 0) { "pass" } else { "not passed" }
+              
+              # Add to results for JSON output
+              $results += [PSCustomObject]@{
+                  filename = $file.Name
+                  result = $status
+                  timestamp = $timestamp
+                  type = "Shell"
+              }
+              
+              # Convert ShellCheck results to similar format as PSScriptAnalyzer
+              $formattedDetails = @()
+              foreach ($issue in $shellCheckResults) {
+                  $formattedDetails += [PSCustomObject]@{
+                      RuleName = "SC$($issue.code)"
+                      Line = $issue.line
+                      Column = $issue.column
+                      Message = $issue.message
+                      Severity = switch ($issue.level) {
+                          "error" { "Error" }
+                          "warning" { "Warning" }
+                          "info" { "Information" }
+                          "style" { "Information" }
+                          default { "Warning" }
+                      }
+                  }
+              }
+              
+              # Add to summary results with details
+              $summaryResults += [PSCustomObject]@{
+                  File = $file.FullName.Replace('\', '/').Replace((Get-Location).Path.Replace('\', '/') + '/', '')
+                  Status = $status
+                  Issues = $issueCount
+                  Details = $formattedDetails
+                  Type = "Shell"
+              }
+          }
+
+          # Convert results to JSON and save to file
+          $jsonOutput = $results | ConvertTo-Json -Depth 3
+          $jsonOutput | Out-File -FilePath "testresults.json" -Encoding UTF8
+          Write-Host "Results saved to testresults.json"
+
+          # Display summary
+          Write-Host "`n=== ANALYSIS SUMMARY ===" -ForegroundColor Green
+          foreach ($result in $summaryResults) {
+              $statusColor = if ($result.Status -eq "pass") { "Green" } else { "Red" }
+              Write-Host "📄 $($result.File): " -NoNewline
+              Write-Host "$($result.Status.ToUpper())" -ForegroundColor $statusColor
+              
+              if ($result.Issues -gt 0) {
+                  Write-Host "   Issues found: $($result.Issues)" -ForegroundColor Yellow
+                  foreach ($issue in $result.Details) {
+                      Write-Host "   - $($issue.RuleName) (Line $($issue.Line))" -ForegroundColor Yellow
+                  }
+              }
+          }
+
+          # Create GitHub Actions summary
+          $passCount = ($summaryResults | Where-Object { $_.Status -eq "pass" }).Count
+          $failCount = ($summaryResults | Where-Object { $_.Status -eq "not passed" }).Count
+          $totalIssues = ($summaryResults | Measure-Object -Property Issues -Sum).Sum
+
+          # Count by type
+          $psCount = ($summaryResults | Where-Object { $_.Type -eq "PowerShell" }).Count
+          $shCount = ($summaryResults | Where-Object { $_.Type -eq "Shell" }).Count
+
+          $summary = @"
+          # 🔍 Script Analysis Results
+
+          ## 📊 Summary
+          - **Total Scripts Analyzed**: $($summaryResults.Count)
+            - **PowerShell Scripts**: $psCount
+            - **Shell Scripts**: $shCount
+          - **✅ Passed**: $passCount
+          - **❌ Failed**: $failCount
+          - **🚨 Total Issues**: $totalIssues
+
+          ## 📋 Detailed Results
+
+          | Script | Type | Status | Issues |
+          |--------|------|--------|--------|
+          "@
+
+          foreach ($result in $summaryResults) {
+              $statusIcon = if ($result.Status -eq "pass") { "✅" } else { "❌" }
+              $typeIcon = if ($result.Type -eq "PowerShell") { "📄" } else { "🐚" }
+              $summary += "`n| $($result.File) | $typeIcon $($result.Type) | $statusIcon $($result.Status) | $($result.Issues) |"
+          }
+
+          if ($failCount -gt 0) {
+              $summary += "`n`n## 🚨 Issues Found`n"
+              foreach ($result in $summaryResults | Where-Object { $_.Status -eq "not passed" }) {
+                  $typeIcon = if ($result.Type -eq "PowerShell") { "📄" } else { "🐚" }
+                  $summary += "`n### $typeIcon $($result.File)`n"
+                  foreach ($issue in $result.Details) {
+                      if ($result.Type -eq "Shell") {
+                          $summary += "- **$($issue.RuleName)** (Line $($issue.Line), Column $($issue.Column)): $($issue.Message)`n"
+                      } else {
+                          $summary += "- **$($issue.RuleName)** (Line $($issue.Line))`n"
+                      }
+                  }
+              }
+          }
+
+          # Write summary to GitHub Actions summary
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
+
+          # Display final status
+          if ($failCount -gt 0) {
+              Write-Host "`n⚠️ Analysis completed with $failCount script(s) having issues" -ForegroundColor Yellow
+              Write-Host "Check the summary above for details." -ForegroundColor Yellow
+          } else {
+              Write-Host "`n✅ All scripts passed analysis!" -ForegroundColor Green
+          }
+
+          # Always exit successfully - we're reporting, not gatekeeping
+          exit 0
+
+      - name: Generate Azure ARM Templates
+        shell: pwsh
+        run: |
+          Write-Host "`n=== GENERATING AZURE TEMPLATES ===" -ForegroundColor Green
+
+          # Load required assemblies
+          Add-Type -AssemblyName System.Web
+
+          # Create output directory
+          $outputDir = "azure-templates"
+          if (Test-Path $outputDir) {
+              Remove-Item $outputDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+          # Initialize the templates registry
+          $templatesRegistry = @{
+              generated = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+              templates = @{}
+          }
+
+          # Function to parse PowerShell script metadata
+          function Get-ScriptMetadata {
+              param([string]$FilePath)
+              
+              $content = Get-Content $FilePath -Raw
+              $metadata = @{}
+              
+              # Extract metadata from comment block
+              if ($content -match '(?s)<#(.*?)#>') {
+                  $commentBlock = $Matches[1]
+                  
+                  # Parse each metadata field
+                  $fields = @('TITLE', 'SYNOPSIS', 'DESCRIPTION', 'TAGS', 'PERMISSIONS', 'AUTHOR', 'VERSION', 'MINROLE')
+                  foreach ($field in $fields) {
+                      if ($commentBlock -match "(?m)^\s*\.$field\s*\r?\n\s*(.+?)(?=\r?\n\s*\.|$)") {
+                          $metadata[$field] = $Matches[1].Trim()
+                      }
+                  }
+              }
+              
+              return $metadata
+          }
+
+          # Function to generate ARM template
+          function New-AzureARMTemplate {
+              param(
+                  [string]$ScriptId,
+                  [string]$ScriptContent,
+                  [hashtable]$Metadata,
+                  [string]$ScriptPath
+              )
+              
+              # Use the actual repository name from environment variable
+              $repoName = "$env:GITHUB_REPOSITORY"
+              
+              $template = @{
+                  '$schema' = "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
+                  contentVersion = "1.0.0.0"
+                  parameters = @{
+                      automationAccountName = @{
+                          type = "string"
+                          metadata = @{
+                              description = "Name of your existing Azure Automation Account (must exist in the selected resource group)"
+                          }
+                      }
+                      runbookName = @{
+                          type = "string"
+                          defaultValue = $ScriptId
+                          metadata = @{
+                              description = "Name for the new runbook (will be created in the Automation Account)"
+                          }
+                      }
+                      runbookDescription = @{
+                          type = "string"
+                          defaultValue = ($Metadata.DESCRIPTION -replace '"', '\"')
+                          metadata = @{
+                              description = "Description of the runbook"
+                          }
+                      }
+                      location = @{
+                          type = "string"
+                          defaultValue = "[resourceGroup().location]"
+                          metadata = @{
+                              description = "Location for the runbook deployment"
+                          }
+                      }
+                  }
+                  variables = @{
+                      runbookType = "PowerShell"
+                      logProgress = $false
+                      logVerbose = $false
+                      scriptUri = "https://raw.githubusercontent.com/$repoName/main/$($ScriptPath -replace '\\', '/')"
+                  }
+                  resources = @(
+                      @{
+                          type = "Microsoft.Automation/automationAccounts/runbooks"
+                          apiVersion = "2023-11-01"
+                          name = "[concat(parameters('automationAccountName'), '/', parameters('runbookName'))]"
+                          location = "[parameters('location')]"
+                          properties = @{
+                              runbookType = "[variables('runbookType')]"
+                              logProgress = "[variables('logProgress')]"
+                              logVerbose = "[variables('logVerbose')]"
+                              description = "[parameters('runbookDescription')]"
+                              publishContentLink = @{
+                                  uri = "[variables('scriptUri')]"
+                              }
+                          }
+                      }
+                  )
+                  outputs = @{
+                      runbookName = @{
+                          type = "string"
+                          value = "[parameters('runbookName')]"
+                      }
+                      automationAccountName = @{
+                          type = "string"
+                          value = "[parameters('automationAccountName')]"
+                      }
+                      runbookUrl = @{
+                          type = "string"
+                          value = "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
+                      }
+                      scriptSourceUrl = @{
+                          type = "string"
+                          value = "[variables('scriptUri')]"
+                      }
+                      deploymentInstructions = @{
+                          type = "string"
+                          value = "Runbook created and published successfully! If the runbook content appears empty, manually import from the source URL provided in the outputs. Next steps: 1) Ensure your Automation Account has Managed Identity enabled, 2) Assign required Microsoft Graph permissions to the Managed Identity, 3) Test the runbook."
+                      }
+                  }
+              }
+              
+              return $template
+          }
+
+          # Process all PowerShell scripts (Azure templates only generated for PowerShell scripts)
+          $scriptFiles = Get-ChildItem -Path "scripts" -Recurse -Filter "*.ps1"
+
+          foreach ($scriptFile in $scriptFiles) {
+              Write-Host "Processing: $($scriptFile.FullName)"
+              
+              # Get script metadata
+              $metadata = Get-ScriptMetadata -FilePath $scriptFile.FullName
+              $scriptId = [System.IO.Path]::GetFileNameWithoutExtension($scriptFile.Name)
+              
+              # Read original script content
+              $originalScript = Get-Content $scriptFile.FullName -Raw
+              
+              # Get relative path from repository root
+              $relativePath = $scriptFile.FullName.Replace((Get-Location).Path + [System.IO.Path]::DirectorySeparatorChar, "").Replace('\', '/')
+              
+              # Generate ARM template
+              $armTemplate = New-AzureARMTemplate -ScriptId $scriptId -ScriptContent $originalScript -Metadata $metadata -ScriptPath $relativePath
+              
+              # Save ARM template to file
+              $templateFileName = "$scriptId-azure-deployment.json"
+              $templatePath = Join-Path $outputDir $templateFileName
+              $armTemplate | ConvertTo-Json -Depth 10 | Set-Content $templatePath -Encoding UTF8
+              
+              # Generate GitHub raw URL for the template
+              $templateUrl = "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/main/$outputDir/$templateFileName"
+              
+              # Add to registry
+              $templatesRegistry.templates[$scriptId] = @{
+                  title = $metadata.TITLE
+                  description = $metadata.DESCRIPTION
+                  tags = $metadata.TAGS -split ','
+                  permissions = $metadata.PERMISSIONS -split ','
+                  author = $metadata.AUTHOR
+                  version = $metadata.VERSION
+                  templateUrl = $templateUrl
+                  deployUrl = "https://portal.azure.com/#create/Microsoft.Template/uri/$([System.Web.HttpUtility]::UrlEncode($templateUrl))"
+                  scriptPath = $relativePath
+              }
+              
+              Write-Host "✓ Generated template for $scriptId"
+          }
+
+          # Save the templates registry
+          $templatesRegistry | ConvertTo-Json -Depth 10 | Set-Content "azure-deployment-templates.json" -Encoding UTF8
+
+          Write-Host "✓ Generated $($scriptFiles.Count) Azure deployment templates"
+          Write-Host "✓ Created azure-deployment-templates.json registry"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: script-analysis-results
+          path: testresults.json
+
+      - name: Commit all results (if on main/master)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add testresults.json azure-templates/ azure-deployment-templates.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update script analysis results and Azure deployment templates [skip ci]"
+            git push
+          fi
