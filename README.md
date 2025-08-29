@@ -186,18 +186,3 @@ A: Yes, but always test in a lab environment first and follow your organization'
 - 💬 Join discussions on [GitHub Discussions](../../discussions)
 
 ## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👨‍💻 Author
-
-**Ugur Koc** - Microsoft MVP  
-- 🌐 Website: [https://ugurkoc.de](https://ugurkoc.de)
-- 🐦 X: [@ugurkocde](https://x.com/ugurkocde)
-- 💼 LinkedIn: [Ugur Koc](https://www.linkedin.com/in/ugurkocde/)
-
----
-
-<p align="center">
-  <strong>⭐ If this project helps you, please give it a star! ⭐</strong>
-</p>
