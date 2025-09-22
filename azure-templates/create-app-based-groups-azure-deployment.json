@@ -1,62 +1,36 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-  "contentVersion": "1.0.0.0",
+  "variables": {
+    "logProgress": false,
+    "runbookType": "PowerShell",
+    "scriptUri": "https://raw.githubusercontent.com/PranavPatil7/AutoIntuneOps/main/scripts/devices/create-app-based-groups.ps1",
+    "logVerbose": false
+  },
   "resources": [
     {
-      "apiVersion": "2023-11-01",
       "type": "Microsoft.Automation/automationAccounts/runbooks",
+      "location": "[parameters('location')]",
       "properties": {
         "description": "[parameters('runbookDescription')]",
-        "logVerbose": "[variables('logVerbose')]",
+        "logProgress": "[variables('logProgress')]",
         "publishContentLink": {
           "uri": "[variables('scriptUri')]"
         },
         "runbookType": "[variables('runbookType')]",
-        "logProgress": "[variables('logProgress')]"
+        "logVerbose": "[variables('logVerbose')]"
       },
-      "location": "[parameters('location')]",
+      "apiVersion": "2023-11-01",
       "name": "[concat(parameters('automationAccountName'), '/', parameters('runbookName'))]"
     }
   ],
-  "variables": {
-    "scriptUri": "https://raw.githubusercontent.com/PranavPatil7/AutoIntuneOps/main/scripts/devices/create-app-based-groups.ps1",
-    "logVerbose": false,
-    "runbookType": "PowerShell",
-    "logProgress": false
-  },
-  "parameters": {
-    "location": {
-      "type": "string",
-      "metadata": {
-        "description": "Location for the runbook deployment"
-      },
-      "defaultValue": "[resourceGroup().location]"
-    },
-    "runbookName": {
-      "type": "string",
-      "metadata": {
-        "description": "Name for the new runbook (will be created in the Automation Account)"
-      },
-      "defaultValue": "create-app-based-groups"
-    },
-    "runbookDescription": {
-      "type": "string",
-      "metadata": {
-        "description": "Description of the runbook"
-      },
-      "defaultValue": "This script queries Intune-managed devices to identify which applications are installed,"
-    },
-    "automationAccountName": {
-      "metadata": {
-        "description": "Name of your existing Azure Automation Account (must exist in the selected resource group)"
-      },
-      "type": "string"
-    }
-  },
   "outputs": {
     "scriptSourceUrl": {
       "type": "string",
       "value": "[variables('scriptUri')]"
+    },
+    "runbookUrl": {
+      "type": "string",
+      "value": "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
     },
     "runbookName": {
       "type": "string",
@@ -69,10 +43,36 @@
     "automationAccountName": {
       "type": "string",
       "value": "[parameters('automationAccountName')]"
-    },
-    "runbookUrl": {
+    }
+  },
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
       "type": "string",
-      "value": "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for the runbook deployment"
+      }
+    },
+    "runbookName": {
+      "type": "string",
+      "defaultValue": "create-app-based-groups",
+      "metadata": {
+        "description": "Name for the new runbook (will be created in the Automation Account)"
+      }
+    },
+    "runbookDescription": {
+      "type": "string",
+      "defaultValue": "This script queries Intune-managed devices to identify which applications are installed,",
+      "metadata": {
+        "description": "Description of the runbook"
+      }
+    },
+    "automationAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of your existing Azure Automation Account (must exist in the selected resource group)"
+      }
     }
   }
 }
