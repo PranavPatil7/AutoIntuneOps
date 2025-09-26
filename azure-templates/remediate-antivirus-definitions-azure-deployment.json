@@ -1,64 +1,35 @@
 {
-  "variables": {
-    "runbookType": "PowerShell",
-    "logProgress": false,
-    "logVerbose": false,
-    "scriptUri": "https://raw.githubusercontent.com/PranavPatil7/AutoIntuneOps/main/scripts/remediation/antivirus-definition-updates/remediate-antivirus-definitions.ps1"
-  },
+  "contentVersion": "1.0.0.0",
   "resources": [
     {
       "type": "Microsoft.Automation/automationAccounts/runbooks",
       "properties": {
-        "runbookType": "[variables('runbookType')]",
         "description": "[parameters('runbookDescription')]",
         "logProgress": "[variables('logProgress')]",
-        "logVerbose": "[variables('logVerbose')]",
         "publishContentLink": {
           "uri": "[variables('scriptUri')]"
-        }
+        },
+        "logVerbose": "[variables('logVerbose')]",
+        "runbookType": "[variables('runbookType')]"
       },
-      "name": "[concat(parameters('automationAccountName'), '/', parameters('runbookName'))]",
       "location": "[parameters('location')]",
+      "name": "[concat(parameters('automationAccountName'), '/', parameters('runbookName'))]",
       "apiVersion": "2023-11-01"
     }
   ],
-  "contentVersion": "1.0.0.0",
-  "outputs": {
-    "automationAccountName": {
-      "type": "string",
-      "value": "[parameters('automationAccountName')]"
-    },
-    "runbookUrl": {
-      "type": "string",
-      "value": "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
-    },
-    "runbookName": {
-      "type": "string",
-      "value": "[parameters('runbookName')]"
-    },
-    "deploymentInstructions": {
-      "type": "string",
-      "value": "Runbook created and published successfully! If the runbook content appears empty, manually import from the source URL provided in the outputs. Next steps: 1) Ensure your Automation Account has Managed Identity enabled, 2) Assign required Microsoft Graph permissions to the Managed Identity, 3) Test the runbook."
-    },
-    "scriptSourceUrl": {
-      "type": "string",
-      "value": "[variables('scriptUri')]"
-    }
-  },
-  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "parameters": {
-    "automationAccountName": {
-      "type": "string",
-      "metadata": {
-        "description": "Name of your existing Azure Automation Account (must exist in the selected resource group)"
-      }
-    },
     "runbookDescription": {
       "type": "string",
       "defaultValue": "Forces Windows Defender signature updates and verifies they were successful.",
       "metadata": {
         "description": "Description of the runbook"
       }
+    },
+    "automationAccountName": {
+      "metadata": {
+        "description": "Name of your existing Azure Automation Account (must exist in the selected resource group)"
+      },
+      "type": "string"
     },
     "runbookName": {
       "type": "string",
@@ -73,6 +44,35 @@
       "metadata": {
         "description": "Location for the runbook deployment"
       }
+    }
+  },
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "variables": {
+    "logProgress": false,
+    "scriptUri": "https://raw.githubusercontent.com/PranavPatil7/AutoIntuneOps/main/scripts/remediation/antivirus-definition-updates/remediate-antivirus-definitions.ps1",
+    "logVerbose": false,
+    "runbookType": "PowerShell"
+  },
+  "outputs": {
+    "deploymentInstructions": {
+      "type": "string",
+      "value": "Runbook created and published successfully! If the runbook content appears empty, manually import from the source URL provided in the outputs. Next steps: 1) Ensure your Automation Account has Managed Identity enabled, 2) Assign required Microsoft Graph permissions to the Managed Identity, 3) Test the runbook."
+    },
+    "scriptSourceUrl": {
+      "type": "string",
+      "value": "[variables('scriptUri')]"
+    },
+    "automationAccountName": {
+      "type": "string",
+      "value": "[parameters('automationAccountName')]"
+    },
+    "runbookName": {
+      "type": "string",
+      "value": "[parameters('runbookName')]"
+    },
+    "runbookUrl": {
+      "type": "string",
+      "value": "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
     }
   }
 }
