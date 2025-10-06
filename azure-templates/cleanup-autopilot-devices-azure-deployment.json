@@ -1,69 +1,16 @@
 {
-  "variables": {
-    "logVerbose": false,
-    "logProgress": false,
-    "scriptUri": "https://raw.githubusercontent.com/PranavPatil7/AutoIntuneOps/main/scripts/devices/cleanup-autopilot-devices.ps1",
-    "runbookType": "PowerShell"
-  },
   "contentVersion": "1.0.0.0",
-  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-  "resources": [
-    {
-      "name": "[concat(parameters('automationAccountName'), '/', parameters('runbookName'))]",
-      "type": "Microsoft.Automation/automationAccounts/runbooks",
-      "properties": {
-        "logVerbose": "[variables('logVerbose')]",
-        "description": "[parameters('runbookDescription')]",
-        "publishContentLink": {
-          "uri": "[variables('scriptUri')]"
-        },
-        "logProgress": "[variables('logProgress')]",
-        "runbookType": "[variables('runbookType')]"
-      },
-      "apiVersion": "2023-11-01",
-      "location": "[parameters('location')]"
-    }
-  ],
-  "outputs": {
-    "automationAccountName": {
-      "type": "string",
-      "value": "[parameters('automationAccountName')]"
-    },
-    "deploymentInstructions": {
-      "type": "string",
-      "value": "Runbook created and published successfully! If the runbook content appears empty, manually import from the source URL provided in the outputs. Next steps: 1) Ensure your Automation Account has Managed Identity enabled, 2) Assign required Microsoft Graph permissions to the Managed Identity, 3) Test the runbook."
-    },
-    "scriptSourceUrl": {
-      "type": "string",
-      "value": "[variables('scriptUri')]"
-    },
-    "runbookUrl": {
-      "type": "string",
-      "value": "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
-    },
-    "runbookName": {
-      "type": "string",
-      "value": "[parameters('runbookName')]"
-    }
-  },
   "parameters": {
     "runbookName": {
-      "type": "string",
       "defaultValue": "cleanup-autopilot-devices",
+      "type": "string",
       "metadata": {
         "description": "Name for the new runbook (will be created in the Automation Account)"
       }
     },
-    "location": {
-      "type": "string",
-      "defaultValue": "[resourceGroup().location]",
-      "metadata": {
-        "description": "Location for the runbook deployment"
-      }
-    },
     "runbookDescription": {
-      "type": "string",
       "defaultValue": "This script connects to Microsoft Graph and identifies Windows Autopilot devices that are",
+      "type": "string",
       "metadata": {
         "description": "Description of the runbook"
       }
@@ -73,6 +20,59 @@
       "metadata": {
         "description": "Name of your existing Azure Automation Account (must exist in the selected resource group)"
       }
+    },
+    "location": {
+      "defaultValue": "[resourceGroup().location]",
+      "type": "string",
+      "metadata": {
+        "description": "Location for the runbook deployment"
+      }
     }
-  }
+  },
+  "variables": {
+    "logVerbose": false,
+    "scriptUri": "https://raw.githubusercontent.com/PranavPatil7/AutoIntuneOps/main/scripts/devices/cleanup-autopilot-devices.ps1",
+    "logProgress": false,
+    "runbookType": "PowerShell"
+  },
+  "outputs": {
+    "deploymentInstructions": {
+      "type": "string",
+      "value": "Runbook created and published successfully! If the runbook content appears empty, manually import from the source URL provided in the outputs. Next steps: 1) Ensure your Automation Account has Managed Identity enabled, 2) Assign required Microsoft Graph permissions to the Managed Identity, 3) Test the runbook."
+    },
+    "runbookUrl": {
+      "type": "string",
+      "value": "[concat('https://portal.azure.com/#@', subscription().tenantId, '/resource/subscriptions/', subscription().subscriptionId, '/resourceGroups/', resourceGroup().name, '/providers/Microsoft.Automation/automationAccounts/', parameters('automationAccountName'), '/runbooks/', parameters('runbookName'))]"
+    },
+    "runbookName": {
+      "type": "string",
+      "value": "[parameters('runbookName')]"
+    },
+    "automationAccountName": {
+      "type": "string",
+      "value": "[parameters('automationAccountName')]"
+    },
+    "scriptSourceUrl": {
+      "type": "string",
+      "value": "[variables('scriptUri')]"
+    }
+  },
+  "resources": [
+    {
+      "properties": {
+        "description": "[parameters('runbookDescription')]",
+        "logVerbose": "[variables('logVerbose')]",
+        "logProgress": "[variables('logProgress')]",
+        "publishContentLink": {
+          "uri": "[variables('scriptUri')]"
+        },
+        "runbookType": "[variables('runbookType')]"
+      },
+      "apiVersion": "2023-11-01",
+      "type": "Microsoft.Automation/automationAccounts/runbooks",
+      "location": "[parameters('location')]",
+      "name": "[concat(parameters('automationAccountName'), '/', parameters('runbookName'))]"
+    }
+  ],
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#"
 }
